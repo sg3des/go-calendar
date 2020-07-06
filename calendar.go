@@ -7,12 +7,14 @@ import (
 )
 
 type Calendar struct {
-	WeekLabels   []string
-	MonthLabels  []string
-	Date         time.Time
-	IsDayOffFunc func(t time.Time) bool
-	LinkFunc     func(t time.Time) string
-	SelectedDate time.Time
+	WeekLabels  []string
+	MonthLabels []string
+
+	DateAt time.Time
+	DateTo time.Time
+
+	CellNameFunc func(t time.Time, n int) string
+	CellDataFunc func(t time.Time, n int) string
 }
 
 var DefaultWeeekLabels = []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
@@ -22,28 +24,38 @@ func DefaultIsDayOffFunc(t time.Time) bool {
 }
 
 func NewCalendar() *Calendar {
-	return &Calendar{WeekLabels: DefaultWeeekLabels, IsDayOffFunc: DefaultIsDayOffFunc, Date: time.Now()}
+	return &Calendar{
+		WeekLabels: DefaultWeeekLabels,
+		// IsDayOffFunc: DefaultIsDayOffFunc,
+		DateAt: time.Now(),
+		DateTo: time.Now().AddDate(0, 1, 0),
+	}
 }
 
 func (c *Calendar) Html() string {
 	wc := len(c.WeekLabels)
-	wd := (int(c.Date.Weekday()) - (c.Date.Day() - 1) + wc*30) % wc
-	last := c.Date.AddDate(0, 1, -c.Date.Day()).Day()
+	wd := int(c.DateAt.Weekday())
+
 	s := "<table class='calendar'>\n"
 	s += " <tr><th>" + strings.Join(c.WeekLabels, "</th><th>") + "</th></tr>\n"
 	s += " <tr>" + strings.Repeat("<td></td>", wd)
 
-	for d := 1; d <= last; d++ {
-		var attrs string
-		if c.IsDayOffFunc(c.Date.AddDate(0, 0, -c.Date.Day()+d)) {
-			attrs = " class='dayoff'"
+	last := int(c.DateTo.Sub(c.DateAt).Hours()/24) + 1
+	for d := 0; d <= last; d++ {
+		t := c.DateAt.AddDate(0, 0, d)
+		name := fmt.Sprint(t.Day())
+		data := ""
+
+		if c.CellNameFunc != nil {
+			name = c.CellNameFunc(t, d)
 		}
-		url := c.link(d)
-		if url != "" {
-			s += "<td><span" + attrs + "><a href='" + url + "'>" + fmt.Sprint(d) + "</a></span></td>"
-		} else {
-			s += fmt.Sprintf("<td><span"+attrs+">%2d</span></td>", d)
+
+		if c.CellDataFunc != nil {
+			data = c.CellDataFunc(t, d)
 		}
+
+		s += fmt.Sprintf("<td><span class='calendar-cell-name'>%s</span><span class='calendar-cell-data'>%s</span></td>", name, data)
+
 		wd = (wd + 1) % wc
 		if wd == 0 {
 			s += "</tr>\n"
@@ -56,43 +68,4 @@ func (c *Calendar) Html() string {
 
 	s += "</table>\n"
 	return s
-}
-
-func (c *Calendar) Markdown() string {
-	wc := len(c.WeekLabels)
-	wd := (int(c.Date.Weekday()) - (c.Date.Day() - 1) + wc*30) % wc
-	last := c.Date.AddDate(0, 1, -c.Date.Day()).Day()
-
-	s := "| " + strings.Join(c.WeekLabels, " | ") + " |\n"
-	s += "|" + strings.Repeat("----:|", wc) + "\n"
-	s += "|" + strings.Repeat("     |", wd)
-	for d := 1; d <= last; d++ {
-		url := c.link(d)
-		if url != "" {
-			s += " [" + fmt.Sprint(d) + "](" + url + ") |"
-		} else {
-			s += fmt.Sprintf("  %2d |", d)
-		}
-		wd = (wd + 1) % wc
-		if wd == 0 {
-			s += "\n"
-			if d != last {
-				s += "|"
-			}
-		}
-	}
-	s += strings.Repeat("     |", wc-wd)
-
-	return s
-}
-
-func (c *Calendar) String() string {
-	return c.Markdown()
-}
-
-func (c Calendar) link(d int) string {
-	if c.LinkFunc == nil {
-		return ""
-	}
-	return c.LinkFunc(c.Date.AddDate(0, 0, -c.Date.Day()+d))
 }
